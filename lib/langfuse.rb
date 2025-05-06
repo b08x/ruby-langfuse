@@ -1,9 +1,11 @@
 # typed: false
 # frozen_string_literal: true
 
+require 'time'
 require 'sorbet-runtime'
 require 'langfuse/version'
 require 'langfuse/configuration'
+require 'langfuse/errors'
 
 # Load models - Use fully qualified names in sigs below
 require 'langfuse/models/ingestion_event'

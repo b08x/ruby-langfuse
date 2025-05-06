@@ -28,10 +28,10 @@ You need to configure the SDK with your Langfuse credentials:
 
 ```ruby
 Langfuse.configure do |config|
-  config.public_key = ENV['LANGFUSE_PUBLIC_KEY']  # e.g., 'pk-lf-...'
-  config.secret_key = ENV['LANGFUSE_SECRET_KEY']  # e.g., 'sk-lf-...'
+  config.public_key = ENV['LANGFUSE_PUBLIC_KEY']
+  config.secret_key = ENV['LANGFUSE_SECRET_KEY']
   config.host = ENV.fetch('LANGFUSE_HOST', 'https://us.cloud.langfuse.com')
-  config.debug = true # Enable debug logging
+  config.debug = true
 end
 ```
 

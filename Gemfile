@@ -6,6 +6,7 @@ gemspec
 
 group :development, :test do
   gem 'debug_me'
+  gem 'pry'
   gem 'pry-stack_explorer'
   gem 'rubocop'
   gem 'rubocop-minitest'

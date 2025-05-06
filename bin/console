@@ -10,12 +10,13 @@ require 'langfuse'
 Langfuse.configure do |config|
   config.public_key = ENV['LANGFUSE_PUBLIC_KEY'] || 'test_public_key'
   config.secret_key = ENV['LANGFUSE_SECRET_KEY'] || 'test_secret_key'
+  config.host = ENV.fetch('LANGFUSE_HOST', nil)
   config.debug = true
 end
 
 # (If you use this, don't forget to add pry to your Gemfile!)
-# require "pry"
-# Pry.start
+require 'pry'
+Pry.start
 
-require 'irb'
-IRB.start(__FILE__)
+# require 'irb'
+# IRB.start(__FILE__)

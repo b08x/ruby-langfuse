@@ -55,43 +55,73 @@ module Langfuse
           errors = T.let(response['errors'], T.nilable(T::Array[T::Hash[String, T.untyped]]))
           if errors && errors.any?
             errors.each do |error|
-              # Use T.unsafe(self).logger provided by Sidekiq::Worker
               T.unsafe(self).logger.error("Langfuse API error for event #{error['id']}: #{error['message']}")
 
               # Store permanently failed events if needed
-              # Assuming error['status'] exists and can be converted to integer
-              status = T.let(error['status'], T.untyped)
-              next unless non_retryable_error?(status)
+              next if retryable_error?(error)
 
-              # Assuming event_hashes elements have :id key
+              # Find the failed event
               failed_event = event_hashes.find { |e| T.unsafe(e)[:id] == error['id'] }
-              if failed_event
-                # Remove redundant T.cast
-                store_failed_event(failed_event, T.cast(error['message'], String))
-              end
+              store_failed_event(failed_event, T.cast(error['message'], String)) if failed_event
             end
           end
-        rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED => e
-          # Network errors - Sidekiq will retry
-          T.unsafe(self).logger.error("Langfuse network error: #{e.full_message}")
-          raise
-        rescue StandardError => e
-          # Other errors
-          # Use T.unsafe(self).logger
+        rescue Langfuse::RateLimitError => e
+          # Special handling for rate limits
+          retry_after = e.retry_after || 30 # Default to 30 seconds if not specified
+          T.unsafe(self).logger.warn("Langfuse rate limit exceeded. Retrying in #{retry_after} seconds.")
+
+          # Requeue the job with a delay based on retry_after
+          # This is Sidekiq-specific and would need adjustment for other job processors
+          T.unsafe(self.class).perform_in(retry_after, event_hashes)
+        rescue Langfuse::RetryableError => e
+          # Get the suggested retry delay if available
+          retry_delay = e.suggested_retry_delay
+
+          if retry_delay
+            T.unsafe(self).logger.warn("Langfuse retryable error: #{e.message}. Retrying in #{retry_delay} seconds.")
+            T.unsafe(self.class).perform_in(retry_delay, event_hashes)
+          else
+            # Let Sidekiq handle the retry for other retryable errors
+            T.unsafe(self).logger.error("Langfuse retryable error: #{e.message}")
+            raise
+          end
+        rescue Langfuse::ValidationError => e
+          # Log validation details if available
+          if e.validation_details
+            T.unsafe(self).logger.error("Langfuse validation error: #{e.message}, details: #{e.validation_details}")
+          else
+            T.unsafe(self).logger.error("Langfuse validation error: #{e.message}")
+          end
+
+          # Store all events as failed
+          event_hashes.each do |event|
+            store_failed_event(event, e.message)
+          end
+        rescue Langfuse::APIError => e
+          # Non-retryable API errors
           T.unsafe(self).logger.error("Langfuse API error: #{e.message}")
 
-          # Let Sidekiq retry
+          # Store all events as failed
+          event_hashes.each do |event|
+            store_failed_event(event, e.message)
+          end
+        rescue StandardError => e
+          # Other unexpected errors
+          T.unsafe(self).logger.error("Langfuse unexpected error: #{e.message}")
           raise
         end
       end
 
       private
 
-      sig { params(status: T.untyped).returns(T::Boolean) }
-      def non_retryable_error?(status)
-        # 4xx errors except 429 (rate limit) are not retryable
+      sig { params(error: T::Hash[String, T.untyped]).returns(T::Boolean) }
+      def retryable_error?(error)
+        # Check if this is a retryable error based on status code
+        status = T.let(error['status'], T.untyped)
         status_int = T.let(status.to_i, Integer)
-        status_int >= 400 && status_int < 500 && status_int != 429
+
+        # 429 (rate limit) and 5xx (server errors) are retryable
+        status_int == 429 || status_int >= 500
       end
 
       sig { params(event: T::Hash[T.untyped, T.untyped], error_msg: String).returns(T.untyped) }

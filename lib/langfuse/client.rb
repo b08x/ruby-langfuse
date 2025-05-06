@@ -27,6 +27,10 @@ module Langfuse
     sig { void }
     def initialize
       @config = T.let(Langfuse.configuration, ::Langfuse::Configuration)
+
+      # Validate configuration
+      validate_configuration!
+
       # Let Sorbet infer the type for Concurrent::Array here
       @events = T.let(Concurrent::Array.new, Concurrent::Array)
       @mutex = T.let(Mutex.new, Mutex)
@@ -211,6 +215,30 @@ module Langfuse
       return unless @config.debug
 
       T.unsafe(@config.logger).send(level, "[Langfuse] #{message}")
+    end
+
+    sig { void }
+    def validate_configuration!
+      if @config.public_key.nil? || @config.public_key.empty?
+        raise ConfigurationError.new(
+          'Missing public_key in Langfuse configuration',
+          config_key: 'public_key'
+        )
+      end
+
+      if @config.secret_key.nil? || @config.secret_key.empty?
+        raise ConfigurationError.new(
+          'Missing secret_key in Langfuse configuration',
+          config_key: 'secret_key'
+        )
+      end
+
+      return unless @config.host.nil? || @config.host.empty?
+
+      raise ConfigurationError.new(
+        'Missing host in Langfuse configuration',
+        config_key: 'host'
+      )
     end
   end
 end
